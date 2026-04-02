@@ -1,13 +1,23 @@
 package store
-import("database/sql";"fmt";"os";"path/filepath";"time";_ "modernc.org/sqlite")
-type DB struct{*sql.DB}
-type Recipe struct{ID int64 `json:"id"`;Title string `json:"title"`;Ingredients string `json:"ingredients"`;Instructions string `json:"instructions"`;Servings int `json:"servings"`;PrepMins int `json:"prep_mins"`;CookMins int `json:"cook_mins"`;Tags string `json:"tags"`;CreatedAt time.Time `json:"created_at"`}
-type MealPlan struct{ID int64 `json:"id"`;Week string `json:"week"`;Day string `json:"day"`;Meal string `json:"meal"`;RecipeID int64 `json:"recipe_id"`;RecipeTitle string `json:"recipe_title"`;CreatedAt time.Time `json:"created_at"`}
-func Open(d string)(*DB,error){os.MkdirAll(d,0755);dsn:=filepath.Join(d,"curator.db")+"?_journal_mode=WAL&_busy_timeout=5000";db,err:=sql.Open("sqlite",dsn);if err!=nil{return nil,fmt.Errorf("open: %w",err)};db.SetMaxOpenConns(1);migrate(db);return &DB{db},nil}
-func migrate(db *sql.DB){db.Exec(`CREATE TABLE IF NOT EXISTS recipes(id INTEGER PRIMARY KEY AUTOINCREMENT,title TEXT NOT NULL,ingredients TEXT DEFAULT '',instructions TEXT DEFAULT '',servings INTEGER DEFAULT 4,prep_mins INTEGER DEFAULT 0,cook_mins INTEGER DEFAULT 0,tags TEXT DEFAULT '',created_at DATETIME DEFAULT CURRENT_TIMESTAMP);CREATE TABLE IF NOT EXISTS meal_plans(id INTEGER PRIMARY KEY AUTOINCREMENT,week TEXT NOT NULL,day TEXT NOT NULL,meal TEXT DEFAULT 'dinner',recipe_id INTEGER NOT NULL,created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`)}
-func(db *DB)CreateRecipe(r *Recipe)error{res,err:=db.Exec(`INSERT INTO recipes(title,ingredients,instructions,servings,prep_mins,cook_mins,tags)VALUES(?,?,?,?,?,?,?)`,r.Title,r.Ingredients,r.Instructions,r.Servings,r.PrepMins,r.CookMins,r.Tags);if err!=nil{return err};r.ID,_=res.LastInsertId();return nil}
-func(db *DB)ListRecipes(q string)([]Recipe,error){base:=`SELECT id,title,ingredients,instructions,servings,prep_mins,cook_mins,tags,created_at FROM recipes WHERE 1=1`;args:=[]interface{}{};if q!=""{base+=` AND (title LIKE ? OR tags LIKE ?)`;args=append(args,"%"+q+"%","%"+q+"%")};base+=` ORDER BY title`;rows,err:=db.Query(base,args...);if err!=nil{return nil,err};defer rows.Close();var out[]Recipe;for rows.Next(){var r Recipe;rows.Scan(&r.ID,&r.Title,&r.Ingredients,&r.Instructions,&r.Servings,&r.PrepMins,&r.CookMins,&r.Tags,&r.CreatedAt);out=append(out,r)};return out,nil}
-func(db *DB)DeleteRecipe(id int64){db.Exec(`DELETE FROM recipes WHERE id=?`,id)}
-func(db *DB)PlanMeal(m *MealPlan)error{res,err:=db.Exec(`INSERT INTO meal_plans(week,day,meal,recipe_id)VALUES(?,?,?,?)`,m.Week,m.Day,m.Meal,m.RecipeID);if err!=nil{return err};m.ID,_=res.LastInsertId();return nil}
-func(db *DB)GetPlan(week string)([]MealPlan,error){rows,_:=db.Query(`SELECT mp.id,mp.week,mp.day,mp.meal,mp.recipe_id,r.title,mp.created_at FROM meal_plans mp JOIN recipes r ON r.id=mp.recipe_id WHERE mp.week=? ORDER BY mp.day,mp.meal`,week);defer rows.Close();var out[]MealPlan;for rows.Next(){var m MealPlan;rows.Scan(&m.ID,&m.Week,&m.Day,&m.Meal,&m.RecipeID,&m.RecipeTitle,&m.CreatedAt);out=append(out,m)};return out,nil}
-func(db *DB)Stats()(map[string]interface{},error){var recipes int;db.QueryRow(`SELECT COUNT(*) FROM recipes`).Scan(&recipes);return map[string]interface{}{"recipes":recipes},nil}
+import ("database/sql";"fmt";"os";"path/filepath";"time";_ "modernc.org/sqlite")
+type DB struct{db *sql.DB}
+type Item struct{
+	ID string `json:"id"`
+	Name string `json:"name"`
+	Description string `json:"description"`
+	Status string `json:"status"`
+	Category string `json:"category"`
+	Tags string `json:"tags"`
+	CreatedAt string `json:"created_at"`
+}
+func Open(d string)(*DB,error){if err:=os.MkdirAll(d,0755);err!=nil{return nil,err};db,err:=sql.Open("sqlite",filepath.Join(d,"curator.db")+"?_journal_mode=WAL&_busy_timeout=5000");if err!=nil{return nil,err}
+db.Exec(`CREATE TABLE IF NOT EXISTS items(id TEXT PRIMARY KEY,name TEXT NOT NULL,description TEXT DEFAULT '',status TEXT DEFAULT 'active',category TEXT DEFAULT '',tags TEXT DEFAULT '',created_at TEXT DEFAULT(datetime('now')))`)
+return &DB{db:db},nil}
+func(d *DB)Close()error{return d.db.Close()}
+func genID()string{return fmt.Sprintf("%d",time.Now().UnixNano())}
+func now()string{return time.Now().UTC().Format(time.RFC3339)}
+func(d *DB)Create(e *Item)error{e.ID=genID();e.CreatedAt=now();_,err:=d.db.Exec(`INSERT INTO items(id,name,description,status,category,tags,created_at)VALUES(?,?,?,?,?,?,?)`,e.ID,e.Name,e.Description,e.Status,e.Category,e.Tags,e.CreatedAt);return err}
+func(d *DB)Get(id string)*Item{var e Item;if d.db.QueryRow(`SELECT id,name,description,status,category,tags,created_at FROM items WHERE id=?`,id).Scan(&e.ID,&e.Name,&e.Description,&e.Status,&e.Category,&e.Tags,&e.CreatedAt)!=nil{return nil};return &e}
+func(d *DB)List()[]Item{rows,_:=d.db.Query(`SELECT id,name,description,status,category,tags,created_at FROM items ORDER BY created_at DESC`);if rows==nil{return nil};defer rows.Close();var o []Item;for rows.Next(){var e Item;rows.Scan(&e.ID,&e.Name,&e.Description,&e.Status,&e.Category,&e.Tags,&e.CreatedAt);o=append(o,e)};return o}
+func(d *DB)Delete(id string)error{_,err:=d.db.Exec(`DELETE FROM items WHERE id=?`,id);return err}
+func(d *DB)Count()int{var n int;d.db.QueryRow(`SELECT COUNT(*) FROM items`).Scan(&n);return n}
