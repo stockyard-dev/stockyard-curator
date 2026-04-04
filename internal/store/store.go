@@ -42,5 +42,8 @@ func(d *DB)Search(q string, filters map[string]string)[]Recipe{
 
 func(d *DB)Stats()map[string]any{
     m:=map[string]any{"total":d.Count()}
+    var cats int;d.db.QueryRow(`SELECT COUNT(DISTINCT category) FROM recipes WHERE category!=''`).Scan(&cats);m["categories"]=cats
+    var avg float64;d.db.QueryRow(`SELECT COALESCE(AVG(CASE WHEN rating>0 THEN rating END),0) FROM recipes`).Scan(&avg);m["avg_rating"]=avg
+    var fav int;d.db.QueryRow(`SELECT COUNT(*) FROM recipes WHERE rating>=4`).Scan(&fav);m["favorites"]=fav
     return m
 }
