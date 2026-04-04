@@ -34,6 +34,7 @@ patch.Ingredients=existing.Ingredients};if patch.Instructions==""{
 patch.Instructions=existing.Instructions};if patch.Category==""{
 patch.Category=existing.Category};if patch.Tags==""{
 patch.Tags=existing.Tags}
+    if patch.PrepTime==0{patch.PrepTime=existing.PrepTime};if patch.CookTime==0{patch.CookTime=existing.CookTime};if patch.Servings==0{patch.Servings=existing.Servings};if patch.Rating==0{patch.Rating=existing.Rating}
     s.db.Update(&patch);wj(w,200,s.db.Get(patch.ID))
 }
 func(s *Server)del(w http.ResponseWriter,r *http.Request){s.db.Delete(r.PathValue("id"));wj(w,200,map[string]string{"deleted":"ok"})}
